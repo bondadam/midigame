@@ -1,8 +1,6 @@
 var canvas = document.getElementById("renderCanvas"); // Get the canvas element 
 var engine = new BABYLON.Engine(canvas, true); // Generate the BABYLON 3D engine
-
-const player = new Timidity();
-player.load("test.mid");
+var currentMidiDuration;
 
 function midiNoteToHertz(note) {
     return Math.pow(2, (note - 69) / 12) * 440
@@ -31,8 +29,8 @@ function calculatePoints(midiData) {
         // transformation en hertz inutile
         // On transforme les points z en x parce que Babylonjs ne fait l'extrusion que en z
         // Apres on fait la rotation inverse de la mesh sur l'axe y par angle PI/2
-        var x = midiData.tracks[2].notes[i].time * 100
-        var y = normalizeBetweenTwoRanges(midiData.tracks[2].notes[i].midi, 0, 127, 0, 50);
+        var x = midiData.tracks[2].notes[i].time * 15
+        var y = normalizeBetweenTwoRanges(midiData.tracks[2].notes[i].midi, 0, 127, 0, 15);
         var z = 0
         var newPoint = new BABYLON.Vector3(x, y, z);
         myPoints.push(newPoint);
@@ -113,10 +111,10 @@ var createScene = function() {
     // Parameters : name, position, scene
     camera = new BABYLON.UniversalCamera("UniversalCamera", new BABYLON.Vector3(0, 0, -10), scene);
 
-// Targets the camera to a particular position. In this case the scene origin
+    // Targets the camera to a particular position. In this case the scene origin
     camera.setTarget(BABYLON.Vector3.Zero());
 
-// Attach the camera to the canvas
+    // Attach the camera to the canvas
     camera.attachControl(canvas, true);
 
     return scene;
@@ -125,8 +123,25 @@ var createScene = function() {
 
 var scene = createScene(); //Call the createScene function
 
+function setPositionInPath(percentage, points) {
+
+    startingPoint = Math.floor(percentage * points.length);
+    distance = percentage % 1;
+
+    sphere.position.x = points[startingPoint].z + distance * (points[startingPoint+1].z - points[startingPoint].z);
+    sphere.position.y = points[startingPoint].y + distance * (points[startingPoint+1].y - points[startingPoint].y) + 2;
+    sphere.position.z = points[startingPoint].x + distance * (points[startingPoint+1].x - points[startingPoint].x);
+
+
+    camera.position.x = sphere.position.x;
+    camera.position.y = sphere.position.y + 2;
+    camera.position.z = sphere.position.z - 5;
+}
+var synth = new Tone.PolySynth(8).toMaster()
 MidiConvert.load("test.mid", function(midi) {
-    var myPoints = smoothPoints(calculatePoints(midi), 10);
+    currentMidiDuration = midi.duration*1000;
+    console.log(currentMidiDuration);
+    var myPoints = smoothPoints(calculatePoints(midi), 30);
     //var lines = BABYLON.MeshBuilder.CreateLines("lines", {points: myPoints}, scene);
     var myPath = [
         new BABYLON.Vector3(0, 0, 0),
@@ -140,29 +155,28 @@ MidiConvert.load("test.mid", function(midi) {
     }, scene);
     extrusion.rotate(BABYLON.Axis.Y, -Math.PI / 2, BABYLON.Space.WORLD);
 
-    var midiDuration = player.duration;
 
-    player.play()
+    // make sure you set the tempo before you schedule the events
+    Tone.Transport.bpm.value = midi.header.bpm;
 
+    var currentTime = 0;
+    // pass in the note events from one of the tracks as the second argument to Tone.Part 
+    var midiPart = new Tone.Part(function(time, note) {
 
-    MIDIjs.play('test.mid');
+        //use the events to play the synth
+        currentTime = time*1000;
+        synth.triggerAttackRelease(note.name, note.duration, time, note.velocity);
+
+    }, midi.tracks[2].notes).start();
+
+    // start the transport to hear the events
+    Tone.Transport.start();
+
     scene.registerAfterRender(function() {
+        currentTime = currentTime + engine.getDeltaTime();
+        var percentage = currentTime / currentMidiDuration;
 
-        var currentPercentage = player.currentTime/midiDuration;
-
-        console.log(player.currenTime);
-
-        if (iloop < myPoints.length - 1) {
-            sphere.position.x = myPoints[iloop].z;
-            sphere.position.y = myPoints[iloop].y + 2;
-            sphere.position.z = myPoints[iloop].x;
-
-
-            camera.position.x = sphere.position.x;
-            camera.position.y = sphere.position.y + 2;
-            camera.position.z = sphere.position.z - 5;
-            iloop = (iloop + 1);
-        }
+        setPositionInPath(percentage, myPoints);
     });
 
 });
