@@ -21,17 +21,18 @@ function normalizeBetweenTwoRanges(val, minVal, maxVal, newMin, newMax) {
     return newMin + (val - minVal) * (newMax - newMin) / (maxVal - minVal);
 }
 
-function calculatePoints(midiData) {
+function calculatePoints(midiTrack, trackNum, extrudeLength) {
     var myPoints = [];
 
-    for (var i = 0; i < midiData.tracks[2].notes.length; i++) {
+    for (var i = 0; i < midiTrack.notes.length; i++) {
+        var separationBetweenTracks = 0;
         //var y = normalizeBetweenTwoRanges(midiNoteToHertz(midiData.tracks[2].notes[i].midi), 8, 12500, 0, 100)
         // transformation en hertz inutile
         // On transforme les points z en x parce que Babylonjs ne fait l'extrusion que en z
         // Apres on fait la rotation inverse de la mesh sur l'axe y par angle PI/2
-        var x = midiData.tracks[2].notes[i].time * 15
-        var y = normalizeBetweenTwoRanges(midiData.tracks[2].notes[i].midi, 0, 127, 0, 15);
-        var z = 0
+        var x = midiTrack.notes[i].time * 15
+        var y = normalizeBetweenTwoRanges(midiTrack.notes[i].midi, 0, 127, 0, 15);
+        var z = trackNum * (extrudeLength + separationBetweenTracks);
         var newPoint = new BABYLON.Vector3(x, y, z);
         myPoints.push(newPoint);
     }
@@ -49,6 +50,48 @@ function smoothPoints(originalPoints, nbNewPoints) {
     }*/
 
     return catmullRom = BABYLON.Curve3.CreateCatmullRomSpline(originalPoints, nbNewPoints, false).getPoints();
+}
+
+function smoothPointsLagrange(points){
+    xyPoints = [];
+    smoothedPoints = [];
+    var l = new Lagrange(points[0].x, points[0].y, points[1].x, points[1].y);
+    for (var i = 2; i < points.length; i++){
+        l.addPoint(points[i].x, points[i].y);
+    }
+    var firstPointX = points[0].x;
+    var lastPointX = points[points.length - 1].x;
+    var z = points[0].z;
+    for (var x = firstPointX; x < lastPointX; x += 100){
+        console.log(l.valueOf(x));
+        var newPoint = new BABYLON.Vector3(x, l.valueOf(x), z);
+        smoothedPoints.push(newPoint);
+        console.log(newPoint);
+    }
+    return smoothedPoints;
+}
+
+function setRollingAverage(points, nbAverage){ // nbAverage in either direction ie. 2 -> 2 1 2 -> 5, 3 -> 7, etc
+    newPoints = points.slice();
+    for (var i = 0; i < points.length; i++){
+        var newTotal = 0;
+        var newAverageNb = 0;
+        for (var j = i - nbAverage; j <= i + nbAverage; j++ ){
+            if (j >= 0 && j < points.length){
+                newTotal += points[j].y;
+                newAverageNb++;
+            }
+        }
+        console.log(newTotal);
+        console.log(newAverageNb);
+        newPoints[i].y = newTotal / newAverageNb;
+    }
+    return newPoints;
+}
+
+function getTrackSmoothedPoints(midiTrack, nbPointsPerOldPoint, trackNum, extrudeLength) {
+    return setRollingAverage(smoothPoints(calculatePoints(midiTrack, trackNum, extrudeLength), nbPointsPerOldPoint), 3);
+    //return smoothPointsLagrange(calculatePoints(midiTrack, trackNum, extrudeLength));
 }
 
 var showAxis = function(size) {
@@ -88,6 +131,7 @@ var showAxis = function(size) {
 };
 
 var sphere;
+var lastSphereX = 1;
 var camera;
 /******* Add the create scene function ******/
 var createScene = function() {
@@ -123,60 +167,100 @@ var createScene = function() {
 
 var scene = createScene(); //Call the createScene function
 
-function setPositionInPath(percentage, points) {
+function setPositionInPath(percentage, points, totalTrackLength) {
 
-    startingPoint = Math.floor(percentage * points.length);
-    distance = percentage % 1;
+    var trackPosition = percentage * totalTrackLength;
 
-    sphere.position.x = points[startingPoint].z + distance * (points[startingPoint+1].z - points[startingPoint].z);
-    sphere.position.y = points[startingPoint].y + distance * (points[startingPoint+1].y - points[startingPoint].y) + 2;
-    sphere.position.z = points[startingPoint].x + distance * (points[startingPoint+1].x - points[startingPoint].x);
+    var startingPoint = 0;
+
+    for (var i = 1; i < points.length; i++){
+        if (points[i].x > trackPosition){
+            break;
+        } else{
+            startingPoint = i;
+        }
+    }
+    //console.log(trackPosition);
+    //console.log(startingPoint);
+
+    var distance = (trackPosition - points[startingPoint].x)/(points[startingPoint+1].x - points[startingPoint].x);
+
+    sphere.position.x = -points[startingPoint].z;
+    sphere.position.y = points[startingPoint].y + distance * (points[startingPoint + 1].y - points[startingPoint].y) + 2;
+    sphere.position.z = points[startingPoint].x + distance * (points[startingPoint + 1].x - points[startingPoint].x);
 
 
     camera.position.x = sphere.position.x;
     camera.position.y = sphere.position.y + 2;
     camera.position.z = sphere.position.z - 5;
 }
+
+
 var synth = new Tone.PolySynth(8).toMaster()
 MidiConvert.load("test.mid", function(midi) {
-    currentMidiDuration = midi.duration*1000;
-    console.log(currentMidiDuration);
-    var myPoints = smoothPoints(calculatePoints(midi), 30);
-    //var lines = BABYLON.MeshBuilder.CreateLines("lines", {points: myPoints}, scene);
+    var extrusionLength = 5;
     var myPath = [
         new BABYLON.Vector3(0, 0, 0),
-        new BABYLON.Vector3(0, 0, 10)
+        new BABYLON.Vector3(0, 0, extrusionLength)
     ];
-    var extrusion = BABYLON.MeshBuilder.ExtrudeShape("circuit", {
-        shape: myPoints,
-        path: myPath,
-        sideOrientation: BABYLON.Mesh.DOUBLESIDE,
-        updatable: true
-    }, scene);
-    extrusion.rotate(BABYLON.Axis.Y, -Math.PI / 2, BABYLON.Space.WORLD);
-
-
-    // make sure you set the tempo before you schedule the events
     Tone.Transport.bpm.value = midi.header.bpm;
-
+    currentMidiDuration = midi.duration * 1000;
+    var pointsTracks = [];
+    var extrudedTracks = [];
+    var trackNum = 0;
     var currentTime = 0;
+    var firstX = 9999;
+    var lastX = 0;
+    for (var i = 0; i < midi.tracks.length; i++) {
+        if (midi.tracks[i].notes.length > 1) {
+            var trackPoints = getTrackSmoothedPoints(midi.tracks[i], 15, trackNum, extrusionLength);
+            console.log(trackPoints);
+            pointsTracks.push(trackPoints);
+            if (trackPoints[0].x < firstX){
+                firstX = trackPoints[0].x;
+            }
+
+            if (trackPoints[trackPoints.length - 1].x > lastX){
+                lastX = trackPoints[trackPoints.length - 1].x;
+            }
+
+            var extrusion = BABYLON.MeshBuilder.ExtrudeShape("circuit", {
+                shape: trackPoints,
+                path: myPath,
+                sideOrientation: BABYLON.Mesh.DOUBLESIDE,
+                updatable: true
+            }, scene);
+            extrusion.rotate(BABYLON.Axis.Y, -Math.PI / 2, BABYLON.Space.WORLD);
+            extrudedTracks.push(extrusion);
+
+            var midiPart = new Tone.Part(function(time, note) {
+
+                //use the events to play the synth
+                //currentTime = time * 1000;
+                synth.triggerAttackRelease(note.name, note.duration, time, note.velocity);
+
+            }, midi.tracks[i].notes).start();
+            trackNum++;
+        }
+    }
+
+    var totalTrackLength = lastX - firstX;
+    /*console.log(pointsTracks.length);
+    console.log(midi.tracks.length);
+    console.log(pointsTracks);*/
+
+
     // pass in the note events from one of the tracks as the second argument to Tone.Part 
-    var midiPart = new Tone.Part(function(time, note) {
-
-        //use the events to play the synth
-        currentTime = time*1000;
-        synth.triggerAttackRelease(note.name, note.duration, time, note.velocity);
-
-    }, midi.tracks[2].notes).start();
 
     // start the transport to hear the events
     Tone.Transport.start();
 
     scene.registerAfterRender(function() {
-        currentTime = currentTime + engine.getDeltaTime();
+        var delta = engine.getDeltaTime();
+        currentTime = currentTime + delta;
         var percentage = currentTime / currentMidiDuration;
-
-        setPositionInPath(percentage, myPoints);
+        lastSphereX = sphere.position.x;
+        setPositionInPath(percentage, pointsTracks[1], totalTrackLength);
     });
 
 });
