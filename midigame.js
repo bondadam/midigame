@@ -30,13 +30,42 @@ function calculatePoints(midiTrack, trackNum, extrudeLength) {
         // transformation en hertz inutile
         // On transforme les points z en x parce que Babylonjs ne fait l'extrusion que en z
         // Apres on fait la rotation inverse de la mesh sur l'axe y par angle PI/2
-        var x = midiTrack.notes[i].time * 15
-        var y = normalizeBetweenTwoRanges(midiTrack.notes[i].midi, 0, 127, 0, 15);
+        var x = midiTrack.notes[i].time * 50
+        var y = normalizeBetweenTwoRanges(midiTrack.notes[i].midi, 0, 127, 0, 50);
         var z = trackNum * (extrudeLength + separationBetweenTracks);
         var newPoint = new BABYLON.Vector3(x, y, z);
         myPoints.push(newPoint);
     }
     return myPoints;
+}
+
+function trackBuilder(points, offset) {
+    var maxAngle = 0.78; // en radians, ~= 45°
+    var z = points[0].z;
+    var builtPoints = [];
+    var firstPointX = points[0].x;
+    var lastPointX = points[points.length - 1].x;
+    var lastClosestPointIndex = 0;
+    for (var i = firstPointX; i < lastPointX-offset; i += offset) {
+        var newClosestPointIndex = lastClosestPointIndex;
+        for (var j = lastClosestPointIndex; j < points.length - 1; j++) {
+            if (points[j].x > i) {
+                break;
+            } else {
+                newClosestPointIndex = j;
+            }
+        }
+        var distance = (i - points[newClosestPointIndex].x) / (points[newClosestPointIndex + 1].x - points[lastClosestPointIndex].x);
+        var newPointY = points[newClosestPointIndex].y + distance * (points[newClosestPointIndex + 1].y - points[newClosestPointIndex ].y);
+
+        var angle = Math.atan2(i - points[newClosestPointIndex].x, newPointY - points[newClosestPointIndex].y);
+
+        if (angle > maxAngle && angle < -maxAngle){ // angle > 45°
+            newPointY = (newPointY - points[newClosestPointIndex].y) * maxAngle/angle;
+        }
+        builtPoints.push(new BABYLON.Vector3(i, newPointY, z));
+    }
+    return builtPoints;
 }
 
 function smoothPoints(originalPoints, nbNewPoints) {
@@ -52,46 +81,43 @@ function smoothPoints(originalPoints, nbNewPoints) {
     return catmullRom = BABYLON.Curve3.CreateCatmullRomSpline(originalPoints, nbNewPoints, false).getPoints();
 }
 
-function smoothPointsLagrange(points){
+function smoothPointsLagrange(points) {
     xyPoints = [];
     smoothedPoints = [];
     var l = new Lagrange(points[0].x, points[0].y, points[1].x, points[1].y);
-    for (var i = 2; i < points.length; i++){
+    for (var i = 2; i < points.length; i++) {
         l.addPoint(points[i].x, points[i].y);
     }
     var firstPointX = points[0].x;
     var lastPointX = points[points.length - 1].x;
     var z = points[0].z;
-    for (var x = firstPointX; x < lastPointX; x += 100){
-        console.log(l.valueOf(x));
+    for (var x = firstPointX; x < lastPointX; x += 100) {
         var newPoint = new BABYLON.Vector3(x, l.valueOf(x), z);
         smoothedPoints.push(newPoint);
-        console.log(newPoint);
     }
     return smoothedPoints;
 }
 
-function setRollingAverage(points, nbAverage){ // nbAverage in either direction ie. 2 -> 2 1 2 -> 5, 3 -> 7, etc
+function setRollingAverage(points, nbAverage) { // nbAverage in either direction ie. 2 -> 2 1 2 -> 5, 3 -> 7, etc
     newPoints = points.slice();
-    for (var i = 0; i < points.length; i++){
+    for (var i = 0; i < points.length; i++) {
         var newTotal = 0;
         var newAverageNb = 0;
-        for (var j = i - nbAverage; j <= i + nbAverage; j++ ){
-            if (j >= 0 && j < points.length){
+        for (var j = i - nbAverage; j <= i + nbAverage; j++) {
+            if (j >= 0 && j < points.length) {
                 newTotal += points[j].y;
                 newAverageNb++;
             }
         }
-        console.log(newTotal);
-        console.log(newAverageNb);
         newPoints[i].y = newTotal / newAverageNb;
     }
     return newPoints;
 }
 
 function getTrackSmoothedPoints(midiTrack, nbPointsPerOldPoint, trackNum, extrudeLength) {
-    return setRollingAverage(smoothPoints(calculatePoints(midiTrack, trackNum, extrudeLength), nbPointsPerOldPoint), 3);
+    //return setRollingAverage(smoothPoints(calculatePoints(midiTrack, trackNum, extrudeLength), nbPointsPerOldPoint), 3);
     //return smoothPointsLagrange(calculatePoints(midiTrack, trackNum, extrudeLength));
+    return smoothPoints(trackBuilder(calculatePoints(midiTrack, trackNum, extrudeLength), 5),5);
 }
 
 var showAxis = function(size) {
@@ -161,6 +187,26 @@ var createScene = function() {
     // Attach the camera to the canvas
     camera.attachControl(canvas, true);
 
+    var inputMap = {};
+    scene.actionManager = new BABYLON.ActionManager(scene);
+    scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyDownTrigger, function(evt) {
+        inputMap[evt.sourceEvent.key] = evt.sourceEvent.type == "keydown";
+    }));
+    scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyUpTrigger, function(evt) {
+        inputMap[evt.sourceEvent.key] = evt.sourceEvent.type == "keydown";
+    }));
+
+    // Game/Render loop
+    scene.onBeforeRenderObservable.add(() => {
+        if (inputMap["q"] || inputMap["ArrowLeft"]) {
+            console.log(sphere.position.x);
+            sphere.position.x -= 0.1
+        }
+        if (inputMap["d"] || inputMap["ArrowRight"]) {
+            sphere.position.x += 0.1
+        }
+    })
+
     return scene;
 };
 /******* End of the create scene function ******/
@@ -173,19 +219,19 @@ function setPositionInPath(percentage, points, totalTrackLength) {
 
     var startingPoint = 0;
 
-    for (var i = 1; i < points.length; i++){
-        if (points[i].x > trackPosition){
+    for (var i = 1; i < points.length; i++) {
+        if (points[i].x > trackPosition) {
             break;
-        } else{
+        } else {
             startingPoint = i;
         }
     }
     //console.log(trackPosition);
     //console.log(startingPoint);
 
-    var distance = (trackPosition - points[startingPoint].x)/(points[startingPoint+1].x - points[startingPoint].x);
+    var distance = (trackPosition - points[startingPoint].x) / (points[startingPoint + 1].x - points[startingPoint].x);
 
-    sphere.position.x = -points[startingPoint].z;
+    //sphere.position.x = -points[startingPoint].z;
     sphere.position.y = points[startingPoint].y + distance * (points[startingPoint + 1].y - points[startingPoint].y) + 2;
     sphere.position.z = points[startingPoint].x + distance * (points[startingPoint + 1].x - points[startingPoint].x);
 
@@ -214,13 +260,12 @@ MidiConvert.load("test.mid", function(midi) {
     for (var i = 0; i < midi.tracks.length; i++) {
         if (midi.tracks[i].notes.length > 1) {
             var trackPoints = getTrackSmoothedPoints(midi.tracks[i], 15, trackNum, extrusionLength);
-            console.log(trackPoints);
             pointsTracks.push(trackPoints);
-            if (trackPoints[0].x < firstX){
+            if (trackPoints[0].x < firstX) {
                 firstX = trackPoints[0].x;
             }
 
-            if (trackPoints[trackPoints.length - 1].x > lastX){
+            if (trackPoints[trackPoints.length - 1].x > lastX) {
                 lastX = trackPoints[trackPoints.length - 1].x;
             }
 
@@ -231,9 +276,16 @@ MidiConvert.load("test.mid", function(midi) {
                 updatable: true
             }, scene);
             extrusion.rotate(BABYLON.Axis.Y, -Math.PI / 2, BABYLON.Space.WORLD);
+
+            var myMaterial = new BABYLON.StandardMaterial("myMaterial", scene);
+
+            myMaterial.diffuseColor = new BABYLON.Color3(Math.random(), Math.random(), Math.random());
+
+            extrusion.material = myMaterial;
+
             extrudedTracks.push(extrusion);
 
-            var midiPart = new Tone.Part(function(time, note) {
+                var midiPart = new Tone.Part(function(time, note) {
 
                 //use the events to play the synth
                 //currentTime = time * 1000;
