@@ -1,6 +1,10 @@
 var canvas = document.getElementById("renderCanvas"); // Get the canvas element 
 var engine = new BABYLON.Engine(canvas, true); // Generate the BABYLON 3D engine
 var currentMidiDuration;
+var trackNb = 1;
+
+var extrusionLength = 3;
+var currentTrack = 2;
 
 function midiNoteToHertz(note) {
     return Math.pow(2, (note - 69) / 12) * 440
@@ -117,7 +121,7 @@ function setRollingAverage(points, nbAverage) { // nbAverage in either direction
 function getTrackSmoothedPoints(midiTrack, nbPointsPerOldPoint, trackNum, extrudeLength) {
     //return setRollingAverage(smoothPoints(calculatePoints(midiTrack, trackNum, extrudeLength), nbPointsPerOldPoint), 3);
     //return smoothPointsLagrange(calculatePoints(midiTrack, trackNum, extrudeLength));
-    return smoothPoints(trackBuilder(calculatePoints(midiTrack, trackNum, extrudeLength), 5),5);
+    return smoothPoints(trackBuilder(calculatePoints(midiTrack, trackNum, extrudeLength), 20),5);
 }
 
 var showAxis = function(size) {
@@ -199,16 +203,22 @@ var createScene = function() {
     // Game/Render loop
     scene.onBeforeRenderObservable.add(() => {
         if (inputMap["q"] || inputMap["ArrowLeft"]) {
-            console.log(sphere.position.x);
-            sphere.position.x -= 0.1
+            if (sphere.position.x > -extrusionLength * trackNb){
+                sphere.position.x -= 0.1
+            }
         }
         if (inputMap["d"] || inputMap["ArrowRight"]) {
-            sphere.position.x += 0.1
+            if (sphere.position.x < 0){
+                sphere.position.x += 0.1
+            }
         }
+        currentTrack = Math.floor(-sphere.position.x/extrusionLength);
+        console.log(currentTrack);
     })
 
     return scene;
 };
+
 /******* End of the create scene function ******/
 
 var scene = createScene(); //Call the createScene function
@@ -231,7 +241,7 @@ function setPositionInPath(percentage, points, totalTrackLength) {
 
     var distance = (trackPosition - points[startingPoint].x) / (points[startingPoint + 1].x - points[startingPoint].x);
 
-    //sphere.position.x = -points[startingPoint].z;
+    //sphere.position.x = -points[startingPoint].z - extrusionLength/2;
     sphere.position.y = points[startingPoint].y + distance * (points[startingPoint + 1].y - points[startingPoint].y) + 2;
     sphere.position.z = points[startingPoint].x + distance * (points[startingPoint + 1].x - points[startingPoint].x);
 
@@ -243,8 +253,7 @@ function setPositionInPath(percentage, points, totalTrackLength) {
 
 
 var synth = new Tone.PolySynth(8).toMaster()
-MidiConvert.load("test.mid", function(midi) {
-    var extrusionLength = 5;
+MidiConvert.load("CottonEyeJoe.mid", function(midi) {
     var myPath = [
         new BABYLON.Vector3(0, 0, 0),
         new BABYLON.Vector3(0, 0, extrusionLength)
@@ -295,6 +304,15 @@ MidiConvert.load("test.mid", function(midi) {
             trackNum++;
         }
     }
+    trackNb = pointsTracks.length;
+
+    var boxesToPlace = 50;
+    for (var i = 0; i < pointsTracks.length - 1; i++){
+        var boxPerTrack = boxesToPlace / trackNb;
+        for (var j = 0; j < boxPerTrack; j++){
+            
+        }
+    }
 
     var totalTrackLength = lastX - firstX;
     /*console.log(pointsTracks.length);
@@ -312,7 +330,10 @@ MidiConvert.load("test.mid", function(midi) {
         currentTime = currentTime + delta;
         var percentage = currentTime / currentMidiDuration;
         lastSphereX = sphere.position.x;
-        setPositionInPath(percentage, pointsTracks[1], totalTrackLength);
+        if (currentTrack > (pointsTracks.length - 1)){
+            currentTrack = (pointsTracks.length - 1);
+        }
+        setPositionInPath(percentage, pointsTracks[currentTrack], totalTrackLength);
     });
 
 });
