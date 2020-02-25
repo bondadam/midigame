@@ -7,87 +7,20 @@ var started = false;
 
 var xfactor = 100;
 var currentTime = 0;
-var extrusionLength = 30;
+var extrusionLength = 20;
 var currentTrack = 2;
-
-/**
- * Normalizes a value from one range (current) to another (new).
- *
- * @param  { Number } val    //the current value (part of the current range).
- * @param  { Number } minVal //the min value of the current value range.
- * @param  { Number } maxVal //the max value of the current value range.
- * @param  { Number } newMin //the min value of the new value range.
- * @param  { Number } newMax //the max value of the new value range.
- *
- * @returns { Number } the normalized value.
- */
-function normalizeBetweenTwoRanges(val, minVal, maxVal, newMin, newMax) {
-    return newMin + (val - minVal) * (newMax - newMin) / (maxVal - minVal);
-}
-
-function calculatePoints(midiTrack, trackNum, extrudeLength) {
-    var myPoints = [];
-
-    for (var i = 0; i < midiTrack.notes.length; i++) {
-        var separationBetweenTracks = 0;
-        //var y = normalizeBetweenTwoRanges(midiNoteToHertz(midiData.tracks[2].notes[i].midi), 8, 12500, 0, 100)
-        // transformation en hertz inutile
-        // On transforme les points z en x parce que Babylonjs ne fait l'extrusion que en z
-        // Apres on fait la rotation inverse de la mesh sur l'axe y par angle PI/2
-        var x = midiTrack.notes[i].time * xfactor;
-        var y = normalizeBetweenTwoRanges(midiTrack.notes[i].midi, 0, 127, 0, 50);
-        var z = trackNum * (extrudeLength + separationBetweenTracks);
-        var newPoint = new BABYLON.Vector3(x, y, z);
-        myPoints.push(newPoint);
-    }
-    var lastNote = midiTrack.notes[midiTrack.notes.length - 1];
-    myPoints.push(new BABYLON.Vector3((lastNote.time + lastNote.duration) * xfactor, normalizeBetweenTwoRanges(lastNote.midi, 0, 127, 0, 50), trackNum * (extrudeLength + separationBetweenTracks)));
-    return myPoints;
-}
-
-function trackBuilder(points, offset) {
-    var maxAngle = 0.78; // en radians, ~= 45°
-    var z = points[0].z;
-    var builtPoints = [];
-    var firstPointX = points[0].x;
-    var lastPointX = points[points.length - 1].x;
-    var lastClosestPointIndex = 0;
-    for (var i = firstPointX; i < lastPointX - offset; i += offset) {
-        var newClosestPointIndex = lastClosestPointIndex;
-        for (var j = lastClosestPointIndex; j < points.length - 1; j++) {
-            if (points[j].x > i) {
-                break;
-            } else {
-                newClosestPointIndex = j;
-            }
-        }
-        var distance = (i - points[newClosestPointIndex].x) / (points[newClosestPointIndex + 1].x - points[lastClosestPointIndex].x);
-        var newPointY = points[newClosestPointIndex].y + distance * (points[newClosestPointIndex + 1].y - points[newClosestPointIndex].y);
-
-        var angle = Math.atan2(i - points[newClosestPointIndex].x, newPointY - points[newClosestPointIndex].y);
-
-        if (angle > maxAngle && angle < -maxAngle) { // angle > 45°
-            newPointY = (newPointY - points[newClosestPointIndex].y) * maxAngle / angle;
-        }
-        builtPoints.push(new BABYLON.Vector3(i, newPointY, z));
-    }
-    return builtPoints;
-}
-
-function smoothPoints(originalPoints, nbNewPoints) {
-    return catmullRom = BABYLON.Curve3.CreateCatmullRomSpline(originalPoints, nbNewPoints, false).getPoints();
-}
-
-function getTrackSmoothedPoints(midiTrack, nbPointsPerOldPoint, trackNum, extrudeLength) {
-    return smoothPoints(trackBuilder(calculatePoints(midiTrack, trackNum, extrudeLength), 50), 5);
-    //return calculatePoints(midiTrack, trackNum, extrudeLength);
-}
+var loaded = false;
 
 var sphere;
 var lastSphereX = 1;
 var camera;
+var progress;
+
+var gameScene;
+var menuScene;
+
 /******* Add the create scene function ******/
-var createScene = function() {
+var createGameScene = function() {
 
     // Create the scene space
     var scene = new BABYLON.Scene(engine);
@@ -113,27 +46,6 @@ var createScene = function() {
     // Attach the camera to the canvas
     camera.attachControl(canvas, true);
 
-    var advancedTexture = BABYLON.GUI.AdvancedDynamicTexture.CreateFullscreenUI("UI");
-
-    var panel = new BABYLON.GUI.StackPanel();
-    panel.horizontalAlignment = BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_LEFT;
-    advancedTexture.addControl(panel);
-
-    var lBtn = BABYLON.GUI.Button.CreateSimpleButton("but", "Left-Top");
-    lBtn.width = "80px";
-    lBtn.height = "40px";
-    lBtn.color = "white";
-    lBtn.background = "green";
-    lBtn.left = "400px";
-    panel.addControl(lBtn);
-
-    lBtn.onPointerClickObservable.add(function() {
-        console.log("Started");
-        Tone.Transport.start();
-        started = true;
-        currentTime = 0;
-    });
-
     var inputMap = {};
     scene.actionManager = new BABYLON.ActionManager(scene);
     scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyDownTrigger, function(evt) {
@@ -156,14 +68,155 @@ var createScene = function() {
             }
         }
         currentTrack = Math.floor(-sphere.position.x / extrusionLength);
-    })
+    });
+
+    var panel = new BABYLON.GUI.StackPanel();
+    panel.horizontalAlignment = BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_LEFT;
+    panel.isVertical = false;
+    var advancedTexture = BABYLON.GUI.AdvancedDynamicTexture.CreateFullscreenUI("UI");
+    advancedTexture.addControl(panel);
+
+    var menuBtn = BABYLON.GUI.Button.CreateSimpleButton("menuBtn", "Menu");
+    menuBtn.verticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_TOP;
+    menuBtn.fontFamily = "Press Start 2P";
+    menuBtn.cornerRadius = 20;
+    menuBtn.paddingLeft = "20px";
+    menuBtn.width = "100px";
+    menuBtn.height = "40px";
+    menuBtn.color = "white";
+    menuBtn.background = "black";
+    panel.addControl(menuBtn);
+
+    menuBtn.onPointerClickObservable.add(function() {
+        started = false;
+        loaded = false;
+        Tone.Transport.stop();
+        Tone.Transport.clearAll();
+        Tone.Context.off();
+        Tone.Context = new AudioContext();
+    });
+
+
 
     return scene;
 };
 
+
+var createMenuScene = function() {
+
+
+    var scene = new BABYLON.Scene(engine);
+    scene.clearColor = new BABYLON.Color3(0.0071, 0.0047, 0.0055);
+
+    var camera = new BABYLON.FreeCamera("camera1", new BABYLON.Vector3(0, 0, -30), scene);
+
+    // This targets the camera to scene origin
+    camera.setTarget(BABYLON.Vector3.Zero());
+
+    // This attaches the camera to the canvas
+    //camera.attachControl(canvas, true);
+
+    // This creates a light, aiming 0,1,0 - to the sky (non-mesh)
+    //var light = new BABYLON.HemisphericLight("light1", new BABYLON.Vector3(0,1, -20), scene);
+
+    // Default intensity is 1. Let's dim the light a small amount
+    //light.intensity = 0.7;
+    var light = new BABYLON.HemisphericLight("HemiLight", new BABYLON.Vector3(0, -1, 0), scene);
+
+
+    var advancedTexture = BABYLON.GUI.AdvancedDynamicTexture.CreateFullscreenUI("UI");
+
+    var panel = new BABYLON.GUI.StackPanel();
+    panel.horizontalAlignment = BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_CENTER;
+    panel.isVertical = false;
+    panel.height = "70%";
+    //panel.paddingBottom = "90px";
+    //panel.background="white";
+    advancedTexture.addControl(panel);
+
+    var image = new BABYLON.GUI.Image("but", "levelshiftlogo.png");
+    image.stretch = BABYLON.GUI.Image.STRETCH_NONE;
+    image.autoScale = true;
+    advancedTexture.addControl(image);
+
+
+    /*
+        progress = new BABYLON.GUI.TextBlock();
+        text1.text = "Hello world";
+        text1.color = "white";
+        text1.fontSize = 24;
+        advancedTexture.addControl(text1); */
+
+    var loadBtn = BABYLON.GUI.Button.CreateSimpleButton("loadBtn", "Load");
+    loadBtn.horizontalAlignment = BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_CENTER;
+    loadBtn.verticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_BOTTOM;
+    loadBtn.fontFamily = "Press Start 2P";
+    loadBtn.cornerRadius = 20;
+    loadBtn.paddingLeft = "20px";
+    loadBtn.width = "100px";
+    loadBtn.height = "40px";
+    loadBtn.color = "white";
+    loadBtn.background = "black";
+    panel.addControl(loadBtn);
+
+    var input1 = new BABYLON.GUI.InputText();
+    input1.horizontalAlignment = BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_CENTER;
+    input1.verticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_BOTTOM;
+    input1.fontFamily = "Press Start 2P";
+    input1.cornerRadius = 20;
+    input1.paddingLeft = "20px";
+    input1.width = "250px";
+    input1.maxWidth = 0.2;
+    input1.height = "40px";
+    input1.text = "";
+    input1.color = "white";
+    input1.background = "black";
+    panel.addControl(input1);
+
+    var loadFromUrlBtn = BABYLON.GUI.Button.CreateSimpleButton("loadFromUrlBtn", "Load from URL");
+    loadFromUrlBtn.horizontalAlignment = BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_CENTER;
+    loadFromUrlBtn.verticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_BOTTOM;
+    loadFromUrlBtn.fontFamily = "Press Start 2P";
+    loadFromUrlBtn.cornerRadius = 20;
+    loadFromUrlBtn.paddingLeft = "20px";
+    loadFromUrlBtn.width = "180px";
+    loadFromUrlBtn.height = "40px";
+    loadFromUrlBtn.color = "white";
+    loadFromUrlBtn.background = "black";
+    panel.addControl(loadFromUrlBtn);
+
+    var playBtn = BABYLON.GUI.Button.CreateSimpleButton("playBtn", "Play");
+    playBtn.horizontalAlignment = BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_CENTER;
+    playBtn.verticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_BOTTOM;
+    playBtn.cornerRadius = 20;
+    playBtn.width = "100px";
+    playBtn.fontFamily = "Press Start 2P";
+    playBtn.paddingLeft = "20px";
+    playBtn.height = "40px";
+    playBtn.color = "white";
+    playBtn.background = "black";
+    playBtn.isEnabled = false;
+    panel.addControl(playBtn);
+
+    playBtn.onPointerClickObservable.add(function() {
+        if (loaded) {
+            console.log("Started");
+            Tone.Transport.start();
+            started = true;
+            currentTime = 0;
+        }
+    });
+
+    loadFromUrlBtn.onPointerClickObservable.add(async function() {
+        await loadMidi(input1.text);
+        playBtn.isEnabled=true;
+    });
+
+    return scene;
+}
+
 /******* End of the create scene function ******/
 
-var scene = createScene(); //Call the createScene function
 
 function setPositionInPath(percentage, points, totalTrackLength) {
 
@@ -192,142 +245,126 @@ function setPositionInPath(percentage, points, totalTrackLength) {
     camera.position.z = sphere.position.z - 5;
 }
 
-function pad_with_zeroes(number, length) {
-
-    var my_string = '' + number;
-    while (my_string.length < length) {
-        my_string = '0' + my_string;
-    }
-
-    return my_string;
-
-}
-
-var synths = [];
-MidiConvert.load("CottonEyeJoe.mid", function(midi) {
-    console.log(midi);
-    var myPath = [
-        new BABYLON.Vector3(0, 0, 0),
-        new BABYLON.Vector3(0, 0, extrusionLength)
-    ];
-    Tone.Transport.bpm.value = midi.header.bpm;
-    currentMidiDuration = midi.duration * 1000;
-    pointsTracks = [];
-    var extrudedTracks = [];
-    var trackNum = 0;
-    var firstX = 9999;
-    var lastX = 0;
-    for (var i = 0; i < midi.tracks.length; i++) {
-        if (midi.tracks[i].notes.length > 1) {
-            var trackPoints = getTrackSmoothedPoints(midi.tracks[i], 15, trackNum, extrusionLength);
-            pointsTracks.push(trackPoints);
-            if (trackPoints[0].x < firstX) {
-                firstX = trackPoints[0].x;
-            }
-
-            if (trackPoints[trackPoints.length - 1].x > lastX) {
-                lastX = trackPoints[trackPoints.length - 1].x;
-            }
-
-            var extrusion = BABYLON.MeshBuilder.ExtrudeShape("circuit", {
-                shape: trackPoints,
-                path: myPath,
-                sideOrientation: BABYLON.Mesh.DOUBLESIDE,
-                updatable: true
-            }, scene);
-            extrusion.rotate(BABYLON.Axis.Y, -Math.PI / 2, BABYLON.Space.WORLD);
-
-            var myMaterial = new BABYLON.StandardMaterial("myMaterial", scene);
-
-            myMaterial.diffuseColor = new BABYLON.Color3(Math.random(), Math.random(), Math.random());
-
-            extrusion.material = myMaterial;
-
-            extrudedTracks.push(extrusion);
-            //var synth = new Tone.PolySynth(32).toMaster();
-
-            if (midi.tracks[i].channelNumber == 9) { // percussions
-
-                var percussionNotes = [];
-                var percussionParts = [];
-                for (var k = 0; k < midi.tracks[i].notes.length; k++) {
-                    var noteIndex = percussionNotes.indexOf(midi.tracks[i].notes[k].midi);
-                    if (noteIndex < 0) {
-                        percussionNotes.push(midi.tracks[i].notes[k].midi);
-                        percussionParts.push([midi.tracks[i].notes[k]]);
-                    } else {
-                        percussionParts[noteIndex].push(midi.tracks[i].notes[k]);
-                    }
+async function loadMidi(url) {
+    MidiConvert.load(url, function(midi) {
+        console.log(midi);
+        var myPath = [
+            new BABYLON.Vector3(0, 0, 0),
+            new BABYLON.Vector3(0, 0, extrusionLength)
+        ];
+        Tone.Transport.bpm.value = midi.header.bpm;
+        currentMidiDuration = midi.duration * 1000;
+        pointsTracks = [];
+        var extrudedTracks = [];
+        var trackNum = 0;
+        var firstX = 9999;
+        var lastX = 0;
+        for (var i = 0; i < midi.tracks.length; i++) {
+            if (midi.tracks[i].notes.length > 1) {
+                var trackPoints = getTrackSmoothedPoints(midi.tracks[i], 15, trackNum, extrusionLength);
+                pointsTracks.push(trackPoints);
+                if (trackPoints[0].x < firstX) {
+                    firstX = trackPoints[0].x;
                 }
 
+                if (trackPoints[trackPoints.length - 1].x > lastX) {
+                    lastX = trackPoints[trackPoints.length - 1].x;
+                }
 
-                for (var k = 0; k < percussionParts.length; k++) {
-                    //ex : https://surikov.github.io/webaudiofontdata/sound/12835_5_FluidR3_GM_sf2_file.js
-                    var tag = percussionParts[k][0].midi + "_5_FluidR3_GM_sf2_file";
+                var extrusion = BABYLON.MeshBuilder.ExtrudeShape("circuit", {
+                    shape: trackPoints,
+                    path: myPath,
+                    sideOrientation: BABYLON.Mesh.DOUBLESIDE,
+                    updatable: true
+                }, gameScene);
+                extrusion.rotate(BABYLON.Axis.Y, -Math.PI / 2, BABYLON.Space.WORLD);
 
-                    var url = 'https://surikov.github.io/webaudiofontdata/sound/128' + tag + '.js';
-                    var variable = '_drum_' + tag;
+                var myMaterial = new BABYLON.StandardMaterial("myMaterial", gameScene);
+
+                myMaterial.diffuseColor = new BABYLON.Color3(Math.random(), Math.random(), Math.random());
+
+                extrusion.material = myMaterial;
+
+                extrudedTracks.push(extrusion);
+                //var synth = new Tone.PolySynth(32).toMaster();
+
+                if (midi.tracks[i].channelNumber == 9) { // percussions
+
+                    var percussionNotes = [];
+                    var percussionParts = [];
+                    for (var k = 0; k < midi.tracks[i].notes.length; k++) {
+                        var noteIndex = percussionNotes.indexOf(midi.tracks[i].notes[k].midi);
+                        if (noteIndex < 0) {
+                            percussionNotes.push(midi.tracks[i].notes[k].midi);
+                            percussionParts.push([midi.tracks[i].notes[k]]);
+                        } else {
+                            percussionParts[noteIndex].push(midi.tracks[i].notes[k]);
+                        }
+                    }
+
+
+                    for (var k = 0; k < percussionParts.length; k++) {
+                        //ex : https://surikov.github.io/webaudiofontdata/sound/12835_5_FluidR3_GM_sf2_file.js
+                        var tag = percussionParts[k][0].midi + "_5_FluidR3_GM_sf2_file";
+
+                        var url = 'https://surikov.github.io/webaudiofontdata/sound/128' + tag + '.js';
+                        var variable = '_drum_' + tag;
+                        var synth = new Tone.WebAudioFontInstrument(url, variable);
+                        console.log(url);
+                        console.log(variable);
+                        addPart(percussionParts[k], synth, true);
+                    }
+
+                } else {
+
+                    var instrumentNumber = (midi.tracks[i].instrumentNumber) * 10;
+                    //ex : https://surikov.github.io/webaudiofontdata/sound/0260_SoundBlasterOld_sf2.js
+                    var tag = pad_with_zeroes(instrumentNumber, 4) + "_FluidR3_GM_sf2_file"; //"_SoundBlasterOld_sf2";
+
+                    var url = 'https://surikov.github.io/webaudiofontdata/sound/' + tag + '.js';
+                    var variable = '_tone_' + tag;
                     var synth = new Tone.WebAudioFontInstrument(url, variable);
                     console.log(url);
                     console.log(variable);
-                    addPart(percussionParts[k], synth);
+                    //synth.loadInstrument(url, variable);
+                    addPart(midi.tracks[i].notes, synth, false);
                 }
-
-            } else {
-
-                var instrumentNumber = (midi.tracks[i].instrumentNumber) * 10;
-                //ex : https://surikov.github.io/webaudiofontdata/sound/0260_SoundBlasterOld_sf2.js
-                var tag = pad_with_zeroes(instrumentNumber, 4) + "_FluidR3_GM_sf2_file"; //"_SoundBlasterOld_sf2";
-
-                var url = 'https://surikov.github.io/webaudiofontdata/sound/' + tag + '.js';
-                var variable = '_tone_' + tag;
-                var synth = new Tone.WebAudioFontInstrument(url, variable);
-                console.log(url);
-                    console.log(variable);
-                //synth.loadInstrument(url, variable);
-                addPart(midi.tracks[i].notes, synth);
+                trackNum++;
             }
-            trackNum++;
         }
-    }
-    trackNb = pointsTracks.length;
+        trackNb = pointsTracks.length;
 
-    totalTrackLength = xfactor * currentMidiDuration / 1000
-    // determine first track that begins
-    var earliestStartingTrack = 0;
-    var earliestStartValue = 9999;
-    for (var i = 0; i < pointsTracks.length; i++) {
-        if (pointsTracks[i][0].x < earliestStartValue) {
-            earliestStartingTrack = i;
-            earliestStartValue = pointsTracks[i][0].x;
+        totalTrackLength = xfactor * currentMidiDuration / 1000
+        // determine first track that begins
+        var earliestStartingTrack = 0;
+        var earliestStartValue = 9999;
+        for (var i = 0; i < pointsTracks.length; i++) {
+            if (pointsTracks[i][0].x < earliestStartValue) {
+                earliestStartingTrack = i;
+                earliestStartValue = pointsTracks[i][0].x;
+            }
         }
-    }
 
-    currentTrack = earliestStartingTrack;
+        currentTrack = earliestStartingTrack;
 
-    // center sphere in middle of current track
-    sphere.position.x = -pointsTracks[currentTrack][0].z - extrusionLength / 2;
+        // center sphere in middle of current track
+        sphere.position.x = -pointsTracks[currentTrack][0].z - extrusionLength / 2;
 
+        loaded = true;
 
-    // pass in the note events from one of the tracks as the second argument to Tone.Part 
+        // pass in the note events from one of the tracks as the second argument to Tone.Part 
 
-    // start the transport to hear the event
-});
-
-function addPart(notes, synth) {
-    new Tone.Part(function(time, note) {
-
-        synth.toMaster();
-        synth.triggerAttackRelease(note.name, time, note.velocity, note.duration);
-        //setTimeout(synth.triggerRelease(), note.duration*1000);
-
-    }, notes).start();
+        // start the transport to hear the event
+    });
 }
+
+gameScene = createGameScene(); //Call the createScene function
+menuScene = createMenuScene();
 
 // Register a render loop to repeatedly render the scene
 engine.runRenderLoop(function() {
-    scene.render();
     if (started) {
+        gameScene.render();
         var delta = engine.getDeltaTime();
         currentTime = currentTime + delta;
         var percentage = currentTime / currentMidiDuration;
@@ -339,6 +376,8 @@ engine.runRenderLoop(function() {
             currentTrack = (pointsTracks.length - 1);
         }
         setPositionInPath(percentage, pointsTracks[currentTrack], totalTrackLength);
+    } else {
+        menuScene.render();
     }
 });
 

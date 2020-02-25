@@ -8184,6 +8184,17 @@
 	        }
 	        return this;
 	    };
+
+	    /**
+		 *  Clear All
+		 *  @param {Number} eventId The id of the event.
+		 *  @returns {Tone.Transport} this
+		 */
+	    Tone.Transport.prototype.clearAll = function () {
+	    	console.log(this._scheduledEvents);
+	        this._scheduledEvents = [];
+	        console.log(this._scheduledEvents);
+	    };
 	    /**
 		 * Add an event to the correct timeline. Keep track of the
 		 * timeline it was added to.
