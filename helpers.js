@@ -1,20 +1,36 @@
 
-/**
- * Normalizes a value from one range (current) to another (new).
- *
- * @param  { Number } val    //the current value (part of the current range).
- * @param  { Number } minVal //the min value of the current value range.
- * @param  { Number } maxVal //the max value of the current value range.
- * @param  { Number } newMin //the min value of the new value range.
- * @param  { Number } newMax //the max value of the new value range.
- *
- * @returns { Number } the normalized value.
- */
+BABYLON.GUI.AdvancedDynamicTexture.prototype.executeOnAllControls = function(func, container) {
+    // console.log('hijacked eoac run.  container: ', container);
+    if (!container) {
+        container = this._rootContainer;
+    }
+    for (var _i = 0, _a = container.children; _i < _a.length; _i++) {
+        var child = _a[_i];
+        if (child.children) {
+            this.executeOnAllControls(func, child);
+            continue;
+        }
+        func(child);
+    }
+};
+
+BABYLON.GUI.AdvancedDynamicTexture.prototype.getControlByName = function(name) {
+    var foundControl = null;
+    if (name) {
+        this.executeOnAllControls(function(control) {
+            if (control.name && control.name === name) {
+                foundControl = control;
+            }
+        }, this._rootContainer);
+    }
+    return foundControl;
+};
+
 function normalizeBetweenTwoRanges(val, minVal, maxVal, newMin, newMax) {
     return newMin + (val - minVal) * (newMax - newMin) / (maxVal - minVal);
 }
 
-function calculatePoints(midiTrack, trackNum, extrudeLength) {
+function calculatePoints(midiTrack, trackNum) {
     var normalizationRange = 100;
     var myPoints = [];
 
@@ -24,14 +40,14 @@ function calculatePoints(midiTrack, trackNum, extrudeLength) {
         // transformation en hertz inutile
         // On transforme les points z en x parce que Babylonjs ne fait l'extrusion que en z
         // Apres on fait la rotation inverse de la mesh sur l'axe y par angle PI/2
-        var x = midiTrack.notes[i].time * xfactor;
+        var x = midiTrack.notes[i].time * window.midiGame.xfactor;
         var y = normalizeBetweenTwoRanges(midiTrack.notes[i].midi, 0, 127, 0, normalizationRange);
-        var z = trackNum * (extrudeLength + separationBetweenTracks);
+        var z = trackNum * (window.midiGame.extrusionLength + separationBetweenTracks);
         var newPoint = new BABYLON.Vector3(x, y, z);
         myPoints.push(newPoint);
     }
     var lastNote = midiTrack.notes[midiTrack.notes.length - 1];
-    myPoints.push(new BABYLON.Vector3((lastNote.time + lastNote.duration) * xfactor, normalizeBetweenTwoRanges(lastNote.midi, 0, 127, 0, normalizationRange), trackNum * (extrudeLength + separationBetweenTracks)));
+    myPoints.push(new BABYLON.Vector3((lastNote.time + lastNote.duration) * window.midiGame.xfactor, normalizeBetweenTwoRanges(lastNote.midi, 0, 127, 0, normalizationRange), trackNum * (window.midiGame.extrusionLength + separationBetweenTracks)));
     return myPoints;
 }
 
@@ -68,8 +84,8 @@ function smoothPoints(originalPoints, nbNewPoints) {
     return catmullRom = BABYLON.Curve3.CreateCatmullRomSpline(originalPoints, nbNewPoints, false).getPoints();
 }
 
-function getTrackSmoothedPoints(midiTrack, nbPointsPerOldPoint, trackNum, extrudeLength) {
-    return smoothPoints(trackBuilder(calculatePoints(midiTrack, trackNum, extrudeLength), 50), 5);
+function getTrackSmoothedPoints(midiTrack, nbPointsPerOldPoint, trackNum) {
+    return smoothPoints(trackBuilder(calculatePoints(midiTrack, trackNum), 50), 5);
     //return calculatePoints(midiTrack, trackNum, extrudeLength);
 }
 

@@ -8191,9 +8191,13 @@
 		 *  @returns {Tone.Transport} this
 		 */
 	    Tone.Transport.prototype.clearAll = function () {
-	    	console.log(this._scheduledEvents);
-	        this._scheduledEvents = [];
-	        console.log(this._scheduledEvents);
+	    	for (var i = 0; i < this._scheduledEvents.length; i++){
+	    		var item = this._scheduledEvents[i];
+	            item.timeline.remove(item.event);
+	            item.event.dispose();
+	            delete this._scheduledEvents[i];
+	    	}
+	        //this._scheduledEvents = [];
 	    };
 	    /**
 		 * Add an event to the correct timeline. Keep track of the
@@ -23435,6 +23439,7 @@ function WebAudioFontLoader(player) {
 	this.player = player;
 	this.cached = [];
 	this.startLoad = function (audioContext, filePath, variableName) {
+		audioContext.resume();
 		if (window[variableName]) {
 			return;
 		}
