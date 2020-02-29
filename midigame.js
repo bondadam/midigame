@@ -65,7 +65,7 @@ window.midiGame = new function() {
                     if (this.bonusBoxes[i].position.z - this.sphere.position.z < 10 * this.xfactor && !this.bonusBoxes[i].planeCreated) {
                         this.bonusBoxes[i].plane = BABYLON.MeshBuilder.CreatePlane("plane", {
                             height: 500,
-                            width: this.extrusionLength,
+                            width: this.extrusionLength/5,
                             sideOrientation: BABYLON.Mesh.DOUBLESIDE
                         }, this.gameScene);
                         this.bonusBoxes[i].plane.position = this.bonusBoxes[i].position;
@@ -521,8 +521,16 @@ window.midiGame = new function() {
                     extrusion.rotate(BABYLON.Axis.Y, -Math.PI / 2, BABYLON.Space.WORLD);
 
                     var myMaterial = new BABYLON.StandardMaterial("myMaterial", this.gameScene);
-
+                    myMaterial.alpha = 0.6;
+                    //myMaterial.alphaMode = BABYLON.Engine.ALPHA_PREMULTIPLIED;
+                    myMaterial.diffuseTexture = new BABYLON.Texture("textures/Hex_glow_basecolor.png", this.gameScene);
+                    myMaterial.bumpTexture = new BABYLON.Texture("textures/Hex_glow_normal.png", this.gameScene);
+                    myMaterial.emissiveTexture = new BABYLON.Texture("textures/Hex_glow_emissive.png", this.gameScene);
+                    myMaterial.diffuseTexture.uScale = 100;
+                    myMaterial.diffuseTexture.vScale = 1;
                     myMaterial.diffuseColor = new BABYLON.Color3(Math.random(), Math.random(), Math.random());
+                    myMaterial.specularColor = new BABYLON.Color3(Math.random(), Math.random(), Math.random());
+                    myMaterial.emissiveColor = new BABYLON.Color3(Math.random(), Math.random(), Math.random());
 
                     extrusion.material = myMaterial;
 
@@ -590,7 +598,7 @@ window.midiGame = new function() {
             for (var i = 0; i < this.trackNb; i++) {
                 for (var j = 0; j < Math.floor(this.pointsTracks[i][this.pointsTracks[i].length - 1].x / this.densityBonusBoxPerTrack); j++) {
                     var randomPoint = this.pointsTracks[i][Math.floor(Math.random() * this.pointsTracks[i].length)];
-                    var bonusBoxSize = 5;
+                    var bonusBoxSize = 2;
                     var bonusBox = BABYLON.MeshBuilder.CreateBox("bonusBox" + j * (i + 1), {
                         height: bonusBoxSize,
                         width: bonusBoxSize,
