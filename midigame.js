@@ -30,6 +30,15 @@ window.midiGame = new function() {
     this.densityBonusBoxPerTrack = 5 * this.xfactor; // on average, on each track, 1 box every x * xfactor seconds
     this.bonusBoxes;
 
+    this.spherePhysics = {};
+    this.spherePhysics.gravity = 0.02;
+    this.spherePhysics.maximumSpeed = 2;
+    this.spherePhysics.jumpFall = false;
+    this.spherePhysics.currentSpeed = 0;
+    this.spherePhysics.jumping = false;
+    this.spherePhysics.jumpImpulse = -0.1;
+    this.spherePhysics.maximumJump = -1;
+
     this.initialize = function() {
         this.menuScene = this.createMenuScene();
 
@@ -114,7 +123,7 @@ window.midiGame = new function() {
         this.camera.setTarget(BABYLON.Vector3.Zero());
 
         // Attach the camera to the canvas
-        this.camera.attachControl(this.canvas, true);
+        //this.camera.attachControl(this.canvas, true);
 
         var inputMap = {};
         scene.actionManager = new BABYLON.ActionManager(scene);
@@ -135,6 +144,24 @@ window.midiGame = new function() {
             if (inputMap["d"] || inputMap["ArrowRight"]) {
                 if (this.sphere.position.x < 0) {
                     this.sphere.position.x += 0.5;
+                }
+            }
+            if (inputMap["z"] || inputMap["ArrowUp"]) {
+                if (!this.spherePhysics.jumping){
+                    this.spherePhysics.jumping = true;
+                    this.spherePhysics.jumpFall = false;
+                    this.spherePhysics.currentSpeed = this.spherePhysics.jumpImpulse;
+                } else {
+                    if (!this.spherePhysics.jumpFall){
+                        this.spherePhysics.currentSpeed += this.spherePhysics.jumpImpulse;
+                        if (this.spherePhysics.currentSpeed < this.spherePhysics.maximumJump){
+                            this.spherePhysics.jumpFall = true;
+                        }
+                    }
+                }
+            } else{
+                if (this.spherePhysics.jumping){
+                    this.spherePhysics.jumpFall = true;
                 }
             }
             this.currentTrack = Math.floor(-this.sphere.position.x / this.extrusionLength);
@@ -198,6 +225,11 @@ window.midiGame = new function() {
 
 
         this.gameGUI = advancedTexture;
+
+        this.spherePhysics.currentSpeed = 0;
+        this.spherePhysics.jumping = false;
+        this.spherePhysics.jumpFall = false;
+
         return scene;
     };
 
@@ -429,7 +461,22 @@ window.midiGame = new function() {
         var distance = (trackPosition - points[startingPoint].x) / (points[startingPoint + 1].x - points[startingPoint].x);
 
         //sphere.position.x = -points[startingPoint].z - extrusionLength/2;
-        this.sphere.position.y = points[startingPoint].y + distance * (points[startingPoint + 1].y - points[startingPoint].y) + 1;
+
+        var floorY = points[startingPoint].y + distance * (points[startingPoint + 1].y - points[startingPoint].y) + 1;
+
+            this.spherePhysics.currentSpeed += this.spherePhysics.gravity;
+            if (this.spherePhysics.currentSpeed > this.spherePhysics.maximumSpeed){
+                this.spherePhysics.currentSpeed =this.spherePhysics.maximumSpeed;
+            }
+
+            this.sphere.position.y = this.sphere.position.y - this.spherePhysics.currentSpeed;
+
+            if (this.sphere.position.y <= floorY){
+                this.spherePhysics.jumping = false;
+                this.sphere.position.y = floorY;
+                this.spherePhysics.currentSpeed = 0;
+            }
+
         this.sphere.position.z = points[startingPoint].x + distance * (points[startingPoint + 1].x - points[startingPoint].x);
 
 
