@@ -31,5 +31,9 @@ https://surikov.github.io/webaudiofontdata/sound/0260_FluidR3_GM_sf2_file.js
 
 
 
+## Credits
 
+Background shader modifié à partir de https://www.shadertoy.com/view/4tjSDt par David Hoskins
+
+Tone.js modifié à partir d'une ébauche d'implémentation de WebAudioFont par Sergey Surikov https://github.com/Tonejs/Tone.js/issues/290
 
