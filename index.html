@@ -4,19 +4,11 @@
     <head>
         <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
         <title>Level Shift - BabylonJS/Midi </title>
-        <link href="https://fonts.googleapis.com/css?family=Press+Start+2P&display=swap" rel="stylesheet">
+        <script src="//use.edgefonts.net/vt323.js"></script>
         <link rel="shortcut icon" type="image/png" href="/media/icon-192x192.png">
         <link rel="shortcut icon" sizes="192x192" href="/media/icon-192x192.png">
         <link rel="apple-touch-icon" href="/media/icon-192x192.png">
         <style>
-            @font-face {
-  font-family: 'Press Start 2P';
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: local('Press Start 2P Regular'), local('PressStart2P-Regular'), url(https://fonts.gstatic.com/s/pressstart2p/v8/e3t4euO8T-267oIAQAu6jDQyK3nVivM.woff2) format('woff2');
-  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
-}
             html, body {
                 overflow: hidden;
                 width: 100%;
@@ -31,6 +23,7 @@
                 touch-action: none;
             }
         </style>
+        <script src="/media/samples/index.js"></script>
         <script src="/js/fontfaceobserver.standalone.js"></script>
         <script src="/js/tonejs1000instr.js"></script>
         <script src="/js/MidiConvert.min.js"> </script>
@@ -44,11 +37,9 @@
     </head>
 
    <body>
-
     <canvas id="renderCanvas" touch-action="none"></canvas> //touch-action="none" for best results from PEP
 
     <script src="/js/midigame.js"></script>
-
    </body>
 
 </html>

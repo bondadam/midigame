@@ -37,3 +37,4 @@ Background shader modifié à partir de https://www.shadertoy.com/view/4tjSDt pa
 
 Tone.js modifié à partir d'une ébauche d'implémentation de WebAudioFont par Sergey Surikov https://github.com/Tonejs/Tone.js/issues/290
 
+Police utilisée pour le logo : MUSICNET par Geronimo Font Studios

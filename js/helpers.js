@@ -30,19 +30,21 @@ function normalizeBetweenTwoRanges(val, minVal, maxVal, newMin, newMax) {
     return newMin + (val - minVal) * (newMax - newMin) / (maxVal - minVal);
 }
 
-function calculatePoints(midiTrack, trackNum) {
-    var normalizationRange = 100;
+function calculatePoints(midiTrack, trackNum, extendTrack) {
+    var normalizationRange = 500;
     var myPoints = [];
+    var separationBetweenTracks = 0;
+    var z = trackNum * (window.midiGame.extrusionLength + separationBetweenTracks);
+    if (extendTrack){
+        myPoints.push(new BABYLON.Vector3(0, normalizeBetweenTwoRanges(midiTrack.notes[0].midi, 0, 127, 0, normalizationRange), z));
+    } // first point so that at least one track starts from the beginning
 
-    for (var i = 0; i < midiTrack.notes.length; i++) {
-        var separationBetweenTracks = 0;
-        //var y = normalizeBetweenTwoRanges(midiNoteToHertz(midiData.tracks[2].notes[i].midi), 8, 12500, 0, 100)
+    for (var i = 0; i < midiTrack.notes.length; i++) {        //var y = normalizeBetweenTwoRanges(midiNoteToHertz(midiData.tracks[2].notes[i].midi), 8, 12500, 0, 100)
         // transformation en hertz inutile
         // On transforme les points z en x parce que Babylonjs ne fait l'extrusion que en z
         // Apres on fait la rotation inverse de la mesh sur l'axe y par angle PI/2
         var x = midiTrack.notes[i].time * window.midiGame.xfactor;
         var y = normalizeBetweenTwoRanges(midiTrack.notes[i].midi, 0, 127, 0, normalizationRange);
-        var z = trackNum * (window.midiGame.extrusionLength + separationBetweenTracks);
         var newPoint = new BABYLON.Vector3(x, y, z);
         myPoints.push(newPoint);
     }
@@ -84,8 +86,8 @@ function smoothPoints(originalPoints, nbNewPoints) {
     return catmullRom = BABYLON.Curve3.CreateCatmullRomSpline(originalPoints, nbNewPoints, false).getPoints();
 }
 
-function getTrackSmoothedPoints(midiTrack, nbPointsPerOldPoint, trackNum) {
-    return smoothPoints(trackBuilder(calculatePoints(midiTrack, trackNum), 50), 5);
+function getTrackSmoothedPoints(midiTrack, nbPointsPerOldPoint, trackNum, extendTrack) {
+    return smoothPoints(trackBuilder(calculatePoints(midiTrack, trackNum, extendTrack), 50), 5);
     //return calculatePoints(midiTrack, trackNum, extrudeLength);
 }
 
